@@ -92,10 +92,21 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+  uint8_t flag = 1;
+
   while (1)
   {
-	  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-	  HAL_Delay(200);
+
+	  if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == 1 && flag == 1){
+
+		  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+		  /*HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);*/
+		  flag = 0;
+		}
+	  else if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == 0){
+		  flag = 1;
+	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -164,6 +175,15 @@ static void MX_GPIO_Init(void)
     GPIOA_Init.Mode = GPIO_MODE_OUTPUT_PP;
 
     HAL_GPIO_Init(GPIOA, &GPIOA_Init);
+
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+
+    	GPIO_InitTypeDef GPIOC_Init = {};
+    		GPIOC_Init.Pin = GPIO_PIN_13;
+    		GPIOC_Init.Mode = GPIO_MODE_INPUT;
+    		GPIOC_Init.Pull = GPIO_NOPULL;
+
+    		HAL_GPIO_Init(GPIOC, &GPIOC_Init);
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
