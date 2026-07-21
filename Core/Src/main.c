@@ -93,15 +93,15 @@ int main(void) {
 	/* USER CODE BEGIN WHILE */
 
 	while (1) {
-		if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == 1) {
+		if (GPIOC->IDR & (1UL << 13) ) {
 
-			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_4, GPIO_PIN_SET);
-			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);
+			GPIOA->ODR |= (1UL << 0) | (1UL << 1) | (1UL << 4);
+			GPIOB->ODR |= (1UL << 0);
 
 			HAL_Delay(500);
 
-			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_4, GPIO_PIN_RESET);
-			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);
+			GPIOA->ODR &= ~((1UL << 0) | (1UL << 1) | (1UL << 4));
+			GPIOB->ODR &= ~(1UL << 0);
 
 			HAL_Delay(500);
 
@@ -110,17 +110,13 @@ int main(void) {
 
 		}
 
-		if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == 0) {
+		if (!(GPIOC->IDR & (1UL << 13) ) ) {
 
 			if (Counting < 16) {
-				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0,
-						(0X001 & Counting) ? GPIO_PIN_SET : GPIO_PIN_RESET);
-				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1,
-						(0X002 & Counting) ? GPIO_PIN_SET : GPIO_PIN_RESET);
-				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4,
-						(0X004 & Counting) ? GPIO_PIN_SET : GPIO_PIN_RESET);
-				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0,
-						(0X008 & Counting) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+				(Counting & 0x01) ? (GPIOA->ODR |= (1UL<<0)) : (GPIOA->ODR &= ~(1UL << 0));
+				(Counting & 0x02) ? (GPIOA->ODR |= (1UL<<1)) : (GPIOA->ODR &= ~(1UL << 1));
+				(Counting & 0x04) ? (GPIOA->ODR |= (1UL<<4)) : (GPIOA->ODR &= ~(1UL << 4));
+				(Counting & 0x08) ? (GPIOB->ODR |= (1UL<<0)) : (GPIOB->ODR &= ~(1UL << 0));
 
 				HAL_Delay(500);
 
@@ -185,41 +181,38 @@ if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) {
  * @retval None
  */
 static void MX_GPIO_Init(void) {
-GPIO_InitTypeDef GPIO_InitStruct = { 0 };
 /* USER CODE BEGIN MX_GPIO_Init_1 */
 
 /* USER CODE END MX_GPIO_Init_1 */
 
 /* GPIO Ports Clock Enable */
-__HAL_RCC_GPIOC_CLK_ENABLE();
-__HAL_RCC_GPIOA_CLK_ENABLE();
-__HAL_RCC_GPIOB_CLK_ENABLE();
+RCC->AHB1ENR |= (1UL<<2); //C PORT WITH REGISTER
+RCC->AHB1ENR |= (1UL<<0); //A PORT WITH REGISTER
+RCC->AHB1ENR |= (1UL<<1); //B PORT WITH REGISTER
 
 /*Configure GPIO pin Output Level */
-HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_4, GPIO_PIN_RESET);
-
-/*Configure GPIO pin Output Level */
-HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);
+GPIOA->ODR &= ~((1UL << 0) | (1UL << 1) | (1UL << 4)); // PA0, PA1, PA4 -> 0V
+GPIOB->ODR &= ~(1UL << 0); // PB0 -> 0V
 
 /*Configure GPIO pin : PC13 */
-GPIO_InitStruct.Pin = GPIO_PIN_13;
-GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-GPIO_InitStruct.Pull = GPIO_NOPULL;
-HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+GPIOC->MODER &= ~(3UL<<26);
+GPIOC->PUPDR &= ~(3UL<<26);
 
 /*Configure GPIO pins : PA0 PA1 PA4 */
-GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_4;
-GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-GPIO_InitStruct.Pull = GPIO_NOPULL;
-GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+GPIOA->MODER &= ~ ((3UL<< 0) | (3UL<< 2) | (3UL<< 8));
+GPIOA->MODER |= (1UL<<0) | (1UL<<2) | (1UL<<8) ;
+GPIOA->OTYPER &= ~((1UL << 0) | (1UL << 1) | (1UL << 4));
+GPIOA->PUPDR &= ~ ((3UL<<0) | (3UL<<2) | (3UL<<8)) ;
+GPIOA->OSPEEDR &= ~ ((3UL<< 0) | (3UL<< 2) | (3UL<< 8));
 
 /*Configure GPIO pin : PB0 */
-GPIO_InitStruct.Pin = GPIO_PIN_0;
-GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-GPIO_InitStruct.Pull = GPIO_NOPULL;
-GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+GPIOB->MODER &= ~ ((3UL<< 0));
+GPIOB->MODER |= (1UL<<0) ;
+GPIOB->OTYPER &= ~(1UL << 0);
+GPIOB->PUPDR &= ~ ((3UL<<0)) ;
+GPIOB->OSPEEDR &= ~ ((3UL<< 0));
+
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 
