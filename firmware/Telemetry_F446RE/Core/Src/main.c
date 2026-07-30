@@ -53,8 +53,13 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 
 BMP280_Trimming_Parameters parameters;
+
 int32_t raw_temperature;
+int32_t raw_pressure;
+
 float real_temperature;
+float real_pressure;
+
 volatile uint8_t bmp_read_flag = 0;
 /* USER CODE END PV */
 
@@ -127,6 +132,11 @@ int main(void)
 			{BMP280_ReadRawTemperature(&hi2c1, &raw_temperature);
 
 		real_temperature = BMP280_CalculateTemperature(raw_temperature, &parameters);
+
+		BMP280_ReadRawPressure(&hi2c1, &raw_pressure);
+
+		real_pressure = BMP280_CalculatePressure(raw_pressure, &parameters);
+
 
 		bmp_read_flag=0;
 
@@ -388,9 +398,17 @@ static void MX_GPIO_Init(void)
 
 void HAL_TIM_PeriodElapsedCallback (TIM_HandleTypeDef *htim){
 
-	if (htim->Instance == TIM2){
+	static uint16_t counting = 0;
+
+	if(htim->Instance == TIM2){
+
+		counting++;
+
+	if (counting == 5){
 
 		bmp_read_flag=1;
+		counting=0;
+		}
 	}
 }
 

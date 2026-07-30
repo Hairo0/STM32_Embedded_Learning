@@ -34,7 +34,11 @@ error_t BMP280_ReadTrimmingParameters(I2C_HandleTypeDef *hi2c, BMP280_Trimming_P
 
 error_t BMP280_ReadRawTemperature(I2C_HandleTypeDef *hi2c, int32_t *raw_temperature);
 
+error_t BMP280_ReadRawPressure(I2C_HandleTypeDef *hi2c, int32_t *raw_pressure);
+
 float BMP280_CalculateTemperature (int32_t raw_temperature, const BMP280_Trimming_Parameters *parameters);
+
+float BMP280_CalculatePressure(int32_t raw_pressure, const BMP280_Trimming_Parameters *parameters);
 
 
 #endif /* INC_BMP280_H_ */

@@ -8,9 +8,11 @@
 #include "bmp280.h"
 #include "config.h"
 
+static int32_t t_fine;
+
 error_t BMP280_Init(I2C_HandleTypeDef *hi2c) {
 
-	uint8_t config_data = 0xA3;
+	uint8_t config_data = 0xB7;
 
 	    if (HAL_I2C_Mem_Write(hi2c, BMP280_ADDRESS, 0xF4, I2C_MEMADD_SIZE_8BIT, &config_data, 1, 100) != HAL_OK) {
 	        return ERROR_SENSOR_NOT_FOUND;
@@ -53,6 +55,18 @@ error_t BMP280_ReadRawTemperature(I2C_HandleTypeDef *hi2c, int32_t *raw_temperat
 	return ERROR_OK;
 }
 
+error_t BMP280_ReadRawPressure(I2C_HandleTypeDef *hi2c, int32_t *raw_pressure) {
+
+	uint8_t raw_data[3];
+
+	HAL_I2C_Mem_Read(hi2c, BMP280_ADDRESS, 0XF7, I2C_MEMADD_SIZE_8BIT, raw_data, 3, 100);
+
+	*raw_pressure =
+			(((uint32_t) raw_data[0] << 12) | ((uint32_t) (raw_data[1] << 4)) | ((uint32_t) (raw_data[2] >> 4)));
+
+	return ERROR_OK;
+}
+
 
 float BMP280_CalculateTemperature (int32_t raw_temperature, const BMP280_Trimming_Parameters *parameters){
 
@@ -61,7 +75,6 @@ float BMP280_CalculateTemperature (int32_t raw_temperature, const BMP280_Trimmin
 		// t_fine carries fine temperature as global value
 
 
-		int32_t t_fine;
 		int32_t var1, var2, T;
 
 		var1 = ((((raw_temperature>>3) - ((int32_t)parameters->dig_T1<<1))) * ((int32_t)parameters->dig_T2)) >> 11;
@@ -79,4 +92,30 @@ float BMP280_CalculateTemperature (int32_t raw_temperature, const BMP280_Trimmin
 		return (float)T/100;
 
 
+}
+
+
+float BMP280_CalculatePressure (int32_t raw_pressure, const BMP280_Trimming_Parameters *parameters){
+
+	// Returns pressure in Pa as unsigned 32 bit integer in Q24.8 format (24 integer bits and 8	fractional bits).
+	// Output value of “24674867” represents 24674867/256 = 96386.2 Pa = 963.862 hPa
+
+	int64_t var1, var2, p;
+
+	var1 = ((int64_t) t_fine) - 128000;
+	var2 = var1 * var1 * (int64_t)parameters->dig_P6;
+	var2 = var2 + ((var1*(int64_t)parameters->dig_P5)<<17);
+	var2 = var2 + (((int64_t)parameters->dig_P4)<<35);
+	var1 = ((var1 * var1 * (int64_t)parameters->dig_P3)>>8) + ((var1 * (int64_t)parameters->dig_P2)<<12);
+	var1 = (((((int64_t)1)<<47)+var1))*((int64_t)parameters->dig_P1)>>33;
+	if (var1 == 0)
+	{
+	return 0; // avoid exception caused by division by zero
+	}
+	p = 1048576-raw_pressure;
+	p = (((p<<31)-var2)*3125)/var1;
+	var1 = (((int64_t)parameters->dig_P9) * (p>>13) * (p>>13)) >> 25;
+	var2 = (((int64_t)parameters->dig_P8) * p) >> 19;
+	p = ((p + var1 + var2) >> 8) + (((int64_t)parameters->dig_P7)<<4);
+	return (float)p / 256 / 100;
 }
