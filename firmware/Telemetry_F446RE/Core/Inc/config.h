@@ -19,6 +19,13 @@
 
 #define BMP280_ID_ADDRESS 0xD0
 #define BMP280_ID_RESET 0X58
+
+#define MPU6050_WHO_AM_I_REG 0x75
+#define MPU6050_WHO_AM_I_VAL 0x70
+#define MPU6050_PWR_MGMT_1 0x6B
+#define MPU6050_INTERRUPT_ENABLE 0X38
+
+
 typedef enum {
 
 

@@ -24,6 +24,7 @@
 
 #include "config.h"
 #include "bmp280.h"
+#include "mpu6050.h"
 
 /* USER CODE END Includes */
 
@@ -56,11 +57,15 @@ BMP280_Trimming_Parameters parameters;
 
 int32_t raw_temperature;
 int32_t raw_pressure;
+MPU6050_ACCEL_GYRO raw_accel_gyro;
 
 float real_temperature;
 float real_pressure;
 
+error_t mpu_status;
+
 volatile uint8_t bmp_read_flag = 0;
+volatile uint8_t mpu_read_flag = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -113,6 +118,9 @@ int main(void)
   MX_TIM2_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  HAL_Delay(50);
+
+  mpu_status = MPU6050_Init(&hi2c1);
 
   BMP280_ReadTrimmingParameters(&hi2c1, &parameters);
 
@@ -137,10 +145,17 @@ int main(void)
 
 		real_pressure = BMP280_CalculatePressure(raw_pressure, &parameters);
 
-
 		bmp_read_flag=0;
 
 			}
+
+			if (mpu_read_flag){
+
+				MPU6050_ReadRawAccelGyro(&hi2c1, &raw_accel_gyro);
+				mpu_read_flag=0;
+			}
+
+
 
 			}
 
@@ -213,6 +228,7 @@ static void MX_I2C1_Init(void)
 {
 
   /* USER CODE BEGIN I2C1_Init 0 */
+
 
   /* USER CODE END I2C1_Init 0 */
 
@@ -412,6 +428,13 @@ void HAL_TIM_PeriodElapsedCallback (TIM_HandleTypeDef *htim){
 	}
 }
 
+void HAL_GPIO_EXTI_Callback (uint16_t GPIO_Pin){
+
+	if(GPIO_Pin == GPIO_PIN_0){
+
+		mpu_read_flag = 1;
+	}
+}
 /* USER CODE END 4 */
 
 /**
