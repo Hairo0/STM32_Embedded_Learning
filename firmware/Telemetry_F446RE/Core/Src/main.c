@@ -25,6 +25,7 @@
 #include "config.h"
 #include "bmp280.h"
 #include "mpu6050.h"
+#include <stdio.h>
 
 /* USER CODE END Includes */
 
@@ -57,7 +58,7 @@ BMP280_Trimming_Parameters parameters;
 
 int32_t raw_temperature;
 int32_t raw_pressure;
-MPU6050_ACCEL_GYRO raw_accel_gyro;
+MPU6050_ACCEL_GYRO real_accel_gyro;
 
 float real_temperature;
 float real_pressure;
@@ -66,6 +67,9 @@ error_t mpu_status;
 
 volatile uint8_t bmp_read_flag = 0;
 volatile uint8_t mpu_read_flag = 0;
+
+TelemetryPacket_t telemetry_packet;
+uint16_t sequence_number=0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -76,6 +80,7 @@ static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
+
 
 /* USER CODE END PFP */
 
@@ -118,7 +123,7 @@ int main(void)
   MX_TIM2_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  HAL_Delay(50);
+  HAL_Delay(100);
 
   mpu_status = MPU6050_Init(&hi2c1);
 
@@ -151,10 +156,30 @@ int main(void)
 
 			if (mpu_read_flag){
 
-				MPU6050_ReadRawAccelGyro(&hi2c1, &raw_accel_gyro);
+				mpu_status = MPU6050_ReadRealAccelGyro(&hi2c1, &real_accel_gyro);
 				mpu_read_flag=0;
-			}
 
+				telemetry_packet.header1 = HEADER_1;
+				telemetry_packet.header2 = HEADER_2;
+
+				telemetry_packet.sequence_number = sequence_number++;
+				telemetry_packet.payload_length = 32;
+				telemetry_packet.packet_type = 0x01;
+
+				telemetry_packet.accel_x = real_accel_gyro.ACCEL_X ;
+				telemetry_packet.accel_y = real_accel_gyro.ACCEL_Y ;
+				telemetry_packet.accel_z = real_accel_gyro.ACCEL_Z ;
+				telemetry_packet.gyro_x = real_accel_gyro.GYRO_X;
+				telemetry_packet.gyro_y = real_accel_gyro.GYRO_Y;
+				telemetry_packet.gyro_z = real_accel_gyro.GYRO_Z;
+				telemetry_packet.temperature = real_temperature;
+				telemetry_packet.pressure = real_pressure;
+
+				telemetry_packet.crc = crc_function((uint8_t*)&telemetry_packet, sizeof(TelemetryPacket_t) - 2);
+				//CRC (Cyclic Redundancy Check / Dongusel Asırılık Kontrolu):
+
+				HAL_UART_Transmit(&huart2, (uint8_t*)&telemetry_packet, sizeof(TelemetryPacket_t), 100);
+			}
 
 
 			}
@@ -236,7 +261,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.ClockSpeed = 400000;
+  hi2c1.Init.ClockSpeed = 100000;
   hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
@@ -412,28 +437,28 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+
 void HAL_TIM_PeriodElapsedCallback (TIM_HandleTypeDef *htim){
 
-	static uint16_t counting = 0;
+    static uint16_t mpu_counter = 0;
+    static uint16_t bmp_counter = 0;
 
-	if(htim->Instance == TIM2){
+    if(htim->Instance == TIM2){
+        mpu_counter++;
+        bmp_counter++;
 
-		counting++;
+        // Her 1 Timer tetiklemesinde bir MPU6050 bayrağını kaldır (50 Hz / 20 ms)
+        if (mpu_counter >= 1) {
+            mpu_read_flag = 1;
+            mpu_counter = 0;
+        }
 
-	if (counting == 5){
-
-		bmp_read_flag=1;
-		counting=0;
-		}
-	}
-}
-
-void HAL_GPIO_EXTI_Callback (uint16_t GPIO_Pin){
-
-	if(GPIO_Pin == GPIO_PIN_0){
-
-		mpu_read_flag = 1;
-	}
+        // Her 5 Timer tetiklemesinde bir BMP280 bayrağını kaldır (10 Hz / 100 ms)
+        if (bmp_counter >= 5) {
+            bmp_read_flag = 1;
+            bmp_counter = 0;
+        }
+    }
 }
 /* USER CODE END 4 */
 

@@ -13,16 +13,16 @@
 
 typedef struct {
 
-	int16_t ACCEL_X;
-	int16_t ACCEL_Y;
-	int16_t ACCEL_Z;
-	int16_t GYRO_X;
-	int16_t GYRO_Y;
-	int16_t GYRO_Z;
+	float ACCEL_X;
+	float ACCEL_Y;
+	float ACCEL_Z;
+	float GYRO_X;
+	float GYRO_Y;
+	float GYRO_Z;
 } MPU6050_ACCEL_GYRO;
 
 error_t MPU6050_Init(I2C_HandleTypeDef *hi2c);
 
-error_t MPU6050_ReadRawAccelGyro(I2C_HandleTypeDef *hi2c, MPU6050_ACCEL_GYRO *raw_accel_gyro);
+error_t MPU6050_ReadRealAccelGyro(I2C_HandleTypeDef *hi2c, MPU6050_ACCEL_GYRO *real_accel_gyro);
 
 #endif /* INC_MPU6050_H_ */
