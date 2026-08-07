@@ -111,22 +111,18 @@ def handle_telemetry_data(data: dict):
     print(f"[GUI SLOT] Received Packet #{data['seq']} -> Temp: {data['temp']} C | Press: {data['press']} hPa")
 
 if __name__ == '__main__':
-    # 1. Initialize Qt Event Loop
+
     app = QCoreApplication(sys.argv)
 
-    # 2. Instantiate Worker Thread
     worker = TelemetryWorker(port_name='COM4', baud_rate=115200)
 
-    # 3. Connect Worker Signal to Slot Function (Interrupt Handler)
     worker.telemetry_signal.connect(handle_telemetry_data)
 
-    # 4. Start Thread execution (Calls run() method in background)
     worker.start()
 
     print("[MAIN] Telemetry worker thread started. Press Ctrl+C to stop.")
 
     try:
-        # Run Qt Event Loop
         sys.exit(app.exec())
     except KeyboardInterrupt:
         print("\n[MAIN] Stopping worker thread...")
