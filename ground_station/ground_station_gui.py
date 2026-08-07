@@ -125,12 +125,7 @@ class GroundStationGUI(QMainWindow):
         self.setWindowTitle("Ground Station GUI - V1.0")
         self.resize(800, 600)
         self.worker_thread = None
-
-        self.maxpoints = 100
         self.update_counter = 0
-        self.seq_data = []
-        self.press_data = []
-        self.az_data = []
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -297,7 +292,6 @@ class GroundStationGUI(QMainWindow):
         self.update_counter += 1
 
         if self.update_counter % 5 == 0:
-            
             self.pressure_curve.setData(self.seq_data, self.press_data)
 
             self.ax_curve.setData(self.seq_data, self.ax_data)
