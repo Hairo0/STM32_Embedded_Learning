@@ -1,13 +1,72 @@
+import math
 import sys
 import time
 import csv
 import serial
 import struct
+import trimesh
+import numpy as np
 from datetime import datetime
-from PyQt6.QtCore import QThread, pyqtSignal
-import pyqtgraph as pg
 
+from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QHBoxLayout, QComboBox, QPushButton, QLabel, QGroupBox, QGridLayout
+
+import pyqtgraph as pg
+import pyqtgraph.opengl as gl
+
+DARK_THEME_QSS = """
+QMainWindow {
+    background-color: #11111b;
+}
+QWidget {
+    background-color: #11111b;
+    color: #cdd6f4;
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 13px;
+}
+QGroupBox {
+    font-weight: bold;
+    border: 1px solid #313244;
+    border-radius: 8px;
+    margin-top: 10px;
+    padding-top: 15px;
+    background-color: #1e1e2e;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 8px;
+    color: #89b4fa;
+}
+QLabel {
+    color: #cdd6f4;
+    background-color: transparent;
+}
+QComboBox {
+    background-color: #313244;
+    color: #cdd6f4;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    padding: 5px;
+    min-width: 80px;
+}
+QComboBox::drop-down {
+    border: none;
+}
+QPushButton {
+    background-color: #89b4fa;
+    color: #11111b;
+    font-weight: bold;
+    border-radius: 4px;
+    padding: 6px 15px;
+}
+QPushButton:hover {
+    background-color: #b4befe;
+}
+QPushButton:pressed {
+    background-color: #74c7ec;
+}
+"""
 
 class TelemetryWorker(QThread):
     telemetry_signal = pyqtSignal(dict)
@@ -72,6 +131,8 @@ class TelemetryWorker(QThread):
                             data_bytes = full_packet[:38]
                             calculated_crc = calculate_crc16(data_bytes)
 
+                            crc_valid = (calculated_crc == crc)
+
                             if calculated_crc == crc:
 
                                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
@@ -87,7 +148,8 @@ class TelemetryWorker(QThread):
                                     'gx': round(gx, 2), 'gy': round(gy, 2), 'gz': round(gz, 2),
                                     'temp': round(temp, 2),
                                     'press': round(press, 2),
-                                    'crc': hex(crc)
+                                    'crc': hex(crc),
+                                    'crc_valid': crc_valid
                                 }
 
                                 self.telemetry_signal.emit(telemetry_payload)
@@ -123,9 +185,24 @@ class GroundStationGUI(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Ground Station GUI - V1.0")
-        self.resize(800, 600)
+        self.resize(1200, 800)
+        self.setStyleSheet(DARK_THEME_QSS)
         self.worker_thread = None
+
+        self.base_pressure = None
+        self.maxpoints = 100
         self.update_counter = 0
+        self.last_seq = None
+        self.lost_packets = 0
+        self.crc_errors = 0
+
+        self.packet_count = 0
+        self.last_fps_time = time.time()
+        self.current_fps = 0
+
+        self.roll = 0.0
+        self.pitch = 0.0
+        self.last_filter_time = time.time()
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -160,6 +237,26 @@ class GroundStationGUI(QMainWindow):
 
         main_layout.addLayout(top_bar_layout)
 
+        system_status_groupbox = QGroupBox("System Status & Metrics")
+        system_status_layout = QHBoxLayout()
+
+        self.fps_label = QLabel("FPS: 0")
+        self.lost_packets_label = QLabel("Lost Packets: 0")
+        self.crc_errors_label = QLabel("CRC Errors: 0")
+        self.orientation_label = QLabel("Roll: 0.0° | Pitch: 0.0°")
+
+        system_status_layout.addWidget(self.fps_label)
+        system_status_layout.addWidget(self.lost_packets_label)
+        system_status_layout.addWidget(self.crc_errors_label)
+        system_status_layout.addWidget(self.orientation_label)
+
+        system_status_groupbox.setLayout(system_status_layout)
+        main_layout.addWidget(system_status_groupbox)
+
+        middle_layout = QHBoxLayout()
+
+        left_panel_layout = QVBoxLayout()
+
         metrics_groupbox = QGroupBox("Live Telemetry Data")
         metrics_layout = QGridLayout()  # Set spacing between widgets
 
@@ -173,9 +270,28 @@ class GroundStationGUI(QMainWindow):
             metrics_layout.addWidget(label, i // 2, i % 2)  # Arrange in two columns
 
         metrics_groupbox.setLayout(metrics_layout)
-        main_layout.addWidget(metrics_groupbox)
+        left_panel_layout.addWidget(metrics_groupbox)
 
-        self.maxpoints = 100
+        group3d = QGroupBox("3D Orientation Visualization")
+        layout_3d = QVBoxLayout()
+        self.view_3d = gl.GLViewWidget()
+        self.view_3d.setCameraPosition(distance=15, elevation=20, azimuth=45)
+        self.view_3d.setBackgroundColor('#121212')
+
+        grid = gl.GLGridItem()
+        grid.setSize(20, 20)
+        grid.setSpacing(1, 1)
+        self.view_3d.addItem(grid)
+
+        self.mesh_item = self.load_3d_model("baykar_bayraktar_tb2.glb")
+        if self.mesh_item:
+            self.view_3d.addItem(self.mesh_item)
+
+        layout_3d.addWidget(self.view_3d)
+        group3d.setLayout(layout_3d)
+        left_panel_layout.addWidget(group3d)
+
+        middle_layout.addLayout(left_panel_layout, stretch=1)
 
         self.seq_data = []
 
@@ -217,11 +333,52 @@ class GroundStationGUI(QMainWindow):
         graph_layout.addWidget(self.gyro_plot)
 
         graph_groupbox.setLayout(graph_layout)
-        main_layout.addWidget(graph_groupbox)
-
-        main_layout.addStretch()  # Add stretch to push the metrics groupbox to the top
+        middle_layout.addWidget(graph_groupbox, stretch=1)
+        main_layout.addLayout(middle_layout)
 
         central_widget.setLayout(main_layout)
+
+    def load_3d_model(self, file_path: str):
+        try:
+            scene_or_mesh = trimesh.load(file_path,)
+            if isinstance(scene_or_mesh, trimesh.Scene):
+                mesh = scene_or_mesh.dump(concatenate=True)
+            else:
+                mesh = scene_or_mesh
+
+            mesh.vertices -= mesh.center_mass
+            mesh.vertices[:, 2] -= np.min(mesh.vertices[:, 2])
+            max_dim = np.max(mesh.extents)
+
+            if max_dim > 0:
+                mesh.vertices /= (max_dim / 6.0)
+
+            vertices = mesh.vertices
+            faces = mesh.faces
+
+            mesh_data = gl.MeshData(vertexes=vertices, faces=faces)
+            mesh_item = gl.GLMeshItem(meshdata=mesh_data, smooth=True, color=(0.2, 0.6, 0.8, 1.0), shader='shaded', glOptions='translucent')
+            print(f"Successfully loaded 3D model '{file_path}'")
+            return mesh_item
+
+        except Exception as e:
+            print(f"Error loading 3D model '{file_path}': {e}")
+
+            vertices = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+            faces = np.array([[0, 1, 2], [0, 2, 3]])
+            mesh_data = gl.MeshData(vertexes=vertices, faces=faces)
+            return gl.GLMeshItem(meshdata=mesh_data, color=(1, 0.5, 0, 1), shader='shaded')
+
+    def update_3d_view(self, roll: float, pitch: float, altitude: float = 0.0):
+        
+        if self.mesh_item is not None:
+            self.mesh_item.resetTransform()
+
+            self.mesh_item.translate(0, 0, 1.5 + altitude)
+            
+            self.mesh_item.rotate(90, 1, 0, 0)
+            self.mesh_item.rotate(roll, 1, 0, 0)
+            self.mesh_item.rotate(pitch, 0, 1, 0)
 
     def closeEvent(self, event):
         if self.worker_thread is not None and self.worker_thread.isRunning():
@@ -254,6 +411,51 @@ class GroundStationGUI(QMainWindow):
             self.start_button.setText("Start Telemetry")
 
     def update_metrics(self, data: dict):
+
+        if not data.get("crc_valid", True):
+                    self.crc_errors += 1
+                    self.crc_errors_label.setText(f"CRC Errors: {self.crc_errors}")
+                    return
+
+        if self.base_pressure is None and data["press"] > 0:
+            self.base_pressure = data["press"]
+
+        rel_altitude = 0
+
+        if self.base_pressure is not None:
+            rel_altitude = (self.base_pressure - data["press"]) * 8.43
+
+        seq = data['seq']
+        if self.last_seq is not None and seq != (self.last_seq + 1):
+            expected_seq = (self.last_seq + 1) % 65536
+            if seq != expected_seq:
+                diff = (seq - expected_seq) % 65536
+                self.lost_packets += diff
+                self.lost_packets_label.setText(f"Lost Packets: {self.lost_packets}")
+        self.last_seq = seq
+
+        self.packet_count += 1
+        now = time.time()
+        dt_fps = now - self.last_fps_time
+        if dt_fps >= 1.0:
+            self.current_fps = round(self.packet_count / dt_fps, 1)
+            self.fps_label.setText(f"FPS: {self.current_fps}")
+            self.packet_count = 0
+            self.last_fps_time = now
+
+        dt_filter = now - self.last_filter_time
+        self.last_filter_time = now
+
+        accel_roll = math.atan2(data['ay'], data['az']) * (180.0 / math.pi) if data['az'] != 0 else 0.0
+        accel_pitch = math.atan2(-data['ax'], math.sqrt(data['ay']**2 + data['az']**2)) * (180.0 / math.pi)
+
+        alpha = 0.98
+        self.roll = alpha * (self.roll + data['gx'] * dt_filter) + (1 - alpha) * accel_roll
+        self.pitch = alpha * (self.pitch + data['gy'] * dt_filter) + (1 - alpha) * accel_pitch
+
+        self.orientation_label.setText(f"Roll: {self.roll:.1f}° | Pitch: {self.pitch:.1f}°")
+
+        self.update_3d_view(self.roll, self.pitch, rel_altitude)
 
         self.metrics_labels["Temperature (°C)"].setText(f"Temperature (°C): {data['temp']:.2f}")
         self.metrics_labels["Pressure (hPa)"].setText(f"Pressure (hPa): {data['press']:.2f}")
